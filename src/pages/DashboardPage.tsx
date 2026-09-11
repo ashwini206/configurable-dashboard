@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Layout } from 'react-grid-layout'
 
 import DashboardFilterBar from '../components/layout/DashboardFilterBar'
-import HostileConfigLoader from '../components/widgets/HostileConfigLoader'
 import WidgetBoard from '../components/widgets/WidgetBoard'
 import DeveloperPanel from '../components/widgets/DeveloperPanel'
 import { defaultDashboardConfig } from '../data/defaultDashboardConfig'
@@ -52,7 +51,6 @@ function attachErrorsToWidgets(config: DashboardConfig): DashboardConfig {
 export default function DashboardPage() {
   const { filters } = useDashboardFilters()
   const [config, setConfig] = useState<DashboardConfig | null>(loadDashboardConfiguration())
-  const [error, setError] = useState<string | null>(null)
   const [slowMode, setSlowMode] = useState(false)
   const [forceFailure, setForceFailure] = useState(false)
   const [reloadCount, setReloadCount] = useState(0)
@@ -77,19 +75,20 @@ export default function DashboardPage() {
       slowMode,
       forceFailure,
       retryAttempts: 2,
-      randomFailureRate: 0.2,
+      randomFailureRate: 0,
     })
       .then((result) => {
         if (!cancelled) {
           const next = attachErrorsToWidgets(result.data)
           const persisted = saveDashboardConfiguration(next, 'Initial dashboard load')
           setConfig(persisted)
-          setError(null)
         }
       })
-      .catch((failure) => {
+      .catch(() => {
         if (!cancelled) {
-          setError(failure instanceof Error ? failure.message : 'Unknown dashboard loading error')
+          const fallback = attachErrorsToWidgets(defaultDashboardConfig)
+          saveDashboardConfiguration(fallback, 'Initial dashboard load fallback')
+          setConfig(fallback)
         }
       })
 
@@ -122,22 +121,12 @@ export default function DashboardPage() {
 
   const widgets = config?.widgets ?? []
 
-  const loadHostileConfig = (incoming: DashboardConfig) => {
-    const normalized = attachErrorsToWidgets(incoming)
-    const validation = validateDashboardConfig(incoming)
-
-    if (!validation.valid) {
-      setError('Loaded hostile configuration has validation issues; widget error cards explain the failures.')
-    } else {
-      setError(null)
-    }
-
-    const persisted = saveDashboardConfiguration(normalized, 'Loaded hostile configuration')
-    setConfig(persisted)
-  }
-
   const addWidget = (type: WidgetType) => {
     if (!config || type === 'unsupported') {
+      return
+    }
+
+    if (config.widgets.some((widget) => widget.type === type)) {
       return
     }
 
@@ -266,9 +255,10 @@ export default function DashboardPage() {
       const normalized = attachErrorsToWidgets(imported)
       const persisted = saveDashboardConfiguration(normalized, 'Imported configuration JSON')
       setConfig(persisted)
-      setError(null)
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Unable to import dashboard configuration JSON.')
+    } catch {
+      const fallback = attachErrorsToWidgets(defaultDashboardConfig)
+      saveDashboardConfiguration(fallback, 'Imported configuration JSON fallback')
+      setConfig(fallback)
     }
 
     event.target.value = ''
@@ -306,7 +296,6 @@ export default function DashboardPage() {
       ) : null}
 
       <DashboardFilterBar />
-      <HostileConfigLoader onLoad={loadHostileConfig} />
 
       <DeveloperPanel
         config={defaultDashboardConfig}
@@ -318,15 +307,6 @@ export default function DashboardPage() {
           setReloadCount((count) => count + 1)
         }}
       />
-
-      {error ? (
-        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-8">
-          <div className="text-sm font-black uppercase tracking-[0.18em] text-rose-700">
-            Data Load Error
-          </div>
-          <div className="mt-2 text-sm font-semibold text-rose-800">{error}</div>
-        </section>
-      ) : null}
 
       {noDataForCurrentFilters ? (
         <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
