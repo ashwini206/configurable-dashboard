@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Layout } from 'react-grid-layout'
 
 import DashboardFilterBar from '../components/layout/DashboardFilterBar'
@@ -8,27 +8,15 @@ import DeveloperPanel from '../components/widgets/DeveloperPanel'
 import { defaultDashboardConfig } from '../data/defaultDashboardConfig'
 import { loadDashboard } from '../services/fakeApi'
 import { validateDashboardConfig } from '../services/configValidator'
+import {
+  exportDashboardConfiguration,
+  importDashboardConfigurationFromText,
+  loadDashboardConfiguration,
+  saveDashboardConfiguration,
+  subscribeToRemoteDashboardUpdates,
+} from '../services/dashboardPersistence'
 import type { DashboardConfig, WidgetConfig, WidgetType } from '../types'
 import { useDashboardFilters } from '../context/DashboardFiltersContext'
-
-const STORAGE_KEY = 'dashboard-config-v1'
-
-function cloneDefaultConfig() {
-  return structuredClone(defaultDashboardConfig)
-}
-
-function loadPersistedConfig(): DashboardConfig {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (!saved) {
-      return cloneDefaultConfig()
-    }
-
-    return JSON.parse(saved) as DashboardConfig
-  } catch {
-    return cloneDefaultConfig()
-  }
-}
 
 function attachErrorsToWidgets(config: DashboardConfig): DashboardConfig {
   const validation = validateDashboardConfig(config)
@@ -63,11 +51,24 @@ function attachErrorsToWidgets(config: DashboardConfig): DashboardConfig {
 
 export default function DashboardPage() {
   const { filters } = useDashboardFilters()
-  const [config, setConfig] = useState<DashboardConfig | null>(loadPersistedConfig())
+  const [config, setConfig] = useState<DashboardConfig | null>(loadDashboardConfiguration())
   const [error, setError] = useState<string | null>(null)
   const [slowMode, setSlowMode] = useState(false)
   const [forceFailure, setForceFailure] = useState(false)
   const [reloadCount, setReloadCount] = useState(0)
+  const [remoteNotice, setRemoteNotice] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    const unsubscribe = subscribeToRemoteDashboardUpdates((next) => {
+      const normalized = attachErrorsToWidgets(next)
+      setConfig(normalized)
+      setRemoteNotice('Dashboard updated from another tab.')
+      setTimeout(() => setRemoteNotice(null), 2400)
+    })
+
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -81,9 +82,9 @@ export default function DashboardPage() {
       .then((result) => {
         if (!cancelled) {
           const next = attachErrorsToWidgets(result.data)
-          setConfig(next)
+          const persisted = saveDashboardConfiguration(next, 'Initial dashboard load')
+          setConfig(persisted)
           setError(null)
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
         }
       })
       .catch((failure) => {
@@ -131,8 +132,8 @@ export default function DashboardPage() {
       setError(null)
     }
 
-    setConfig(normalized)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+    const persisted = saveDashboardConfiguration(normalized, 'Loaded hostile configuration')
+    setConfig(persisted)
   }
 
   const addWidget = (type: WidgetType) => {
@@ -194,8 +195,8 @@ export default function DashboardPage() {
     }
 
     const normalized = attachErrorsToWidgets(nextConfig)
-    setConfig(normalized)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+    const persisted = saveDashboardConfiguration(normalized, 'Added widget')
+    setConfig(persisted)
   }
 
   const removeWidget = (id: string) => {
@@ -209,8 +210,8 @@ export default function DashboardPage() {
     }
 
     const normalized = attachErrorsToWidgets(nextConfig)
-    setConfig(normalized)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+    const persisted = saveDashboardConfiguration(normalized, 'Removed widget')
+    setConfig(persisted)
   }
 
   const persistLayout = (layout: Layout) => {
@@ -241,8 +242,36 @@ export default function DashboardPage() {
 
     const nextConfig = { ...config, widgets: mapped as WidgetConfig[] }
     const normalized = attachErrorsToWidgets(nextConfig)
-    setConfig(normalized)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+    const persisted = saveDashboardConfiguration(normalized, 'Updated layout')
+    setConfig(persisted)
+  }
+
+  const handleExport = () => {
+    if (!config) {
+      return
+    }
+
+    exportDashboardConfiguration(config)
+  }
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    try {
+      const text = await file.text()
+      const imported = importDashboardConfigurationFromText(text)
+      const normalized = attachErrorsToWidgets(imported)
+      const persisted = saveDashboardConfiguration(normalized, 'Imported configuration JSON')
+      setConfig(persisted)
+      setError(null)
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Unable to import dashboard configuration JSON.')
+    }
+
+    event.target.value = ''
   }
 
   return (
@@ -256,10 +285,25 @@ export default function DashboardPage() {
             Executive Dashboard
           </h1>
         </div>
-        <button className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-700 transition hover:bg-slate-50">
-          Refresh Data
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-700 transition hover:bg-slate-50">
+            Refresh Data
+          </button>
+          <button className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-emerald-700 transition hover:bg-emerald-100" onClick={handleExport}>
+            Export JSON
+          </button>
+          <button className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-sky-700 transition hover:bg-sky-100" onClick={() => fileInputRef.current?.click()}>
+            Import JSON
+          </button>
+          <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImport} />
+        </div>
       </section>
+
+      {remoteNotice ? (
+        <section className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+          <span className="text-xs font-black uppercase tracking-[0.2em] text-sky-700">{remoteNotice}</span>
+        </section>
+      ) : null}
 
       <DashboardFilterBar />
       <HostileConfigLoader onLoad={loadHostileConfig} />

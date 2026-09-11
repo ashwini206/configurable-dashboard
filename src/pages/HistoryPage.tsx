@@ -1,4 +1,12 @@
+import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import { loadRevisionHistory, restoreRevision } from '../services/dashboardPersistence'
+
 export default function HistoryPage() {
+  const navigate = useNavigate()
+  const revisions = useMemo(() => loadRevisionHistory(), [])
+
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -17,19 +25,35 @@ export default function HistoryPage() {
           Revision Timeline
         </div>
         <div className="mt-6 space-y-4">
-          {[1, 2, 3].map((item) => (
-            <article key={item} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-4">
+          {revisions.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-bold uppercase tracking-[0.2em] text-slate-500">
+              No revisions yet
+            </div>
+          ) : null}
+
+          {revisions.map((revision) => (
+            <article key={revision.id} className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-4 py-4">
               <div>
                 <div className="text-sm font-bold text-slate-900">
-                  Revision {item}
+                  {revision.summary}
                 </div>
                 <div className="text-xs font-medium text-slate-500">
-                  Published by System Admin · 2026-09-11
+                  {new Date(revision.timestamp).toLocaleString()}
                 </div>
               </div>
-              <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white">
-                Complete
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white">
+                  {revision.config.version}
+                </span>
+                <button className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-700 transition hover:bg-slate-50" onClick={() => {
+                  const restored = restoreRevision(revision.id)
+                  if (restored) {
+                    navigate('/')
+                  }
+                }}>
+                  Restore
+                </button>
+              </div>
             </article>
           ))}
         </div>
