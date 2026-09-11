@@ -1,4 +1,5 @@
 import type { WidgetConfig } from '../../types'
+import WidgetCard from './WidgetCard'
 import { renderWidget } from './widgetRegistry'
 
 interface WidgetFactoryProps {
@@ -15,19 +16,7 @@ export default function WidgetFactory({ widget }: WidgetFactoryProps) {
   }
 
   if (widget.error) {
-    return (
-      <div className="rounded-xl border border-rose-200 bg-rose-50 p-10 text-center text-xs font-black uppercase tracking-[0.2em] text-rose-700">
-        {widget.error}
-      </div>
-    )
-  }
-
-  if (widget.empty) {
-    return (
-      <div className="rounded-xl border border-dashed border-slate-200 p-10 text-center text-xs font-black uppercase tracking-[0.2em] text-slate-500">
-        No healthcare data available
-      </div>
-    )
+    return <WidgetCard widget={widget} />
   }
 
   return renderWidget(widget)

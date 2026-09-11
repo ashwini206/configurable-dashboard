@@ -1,4 +1,4 @@
-export type WidgetType = 'kpi' | 'bar' | 'line' | 'table' | 'unsupported'
+export type WidgetType = 'kpi' | 'bar' | 'line' | 'table' | 'unsupported' | (string & {})
 
 export interface DashboardFilters {
   region?: string
@@ -6,6 +6,7 @@ export interface DashboardFilters {
   ward?: string
   status?: 'normal' | 'warning' | 'critical'
   timeRange?: string
+  dateRange?: string
 }
 
 export interface LayoutConfig {
@@ -28,6 +29,7 @@ export interface WidgetConfig {
   w?: number
   h?: number
   dataSource?: string
+  dataKey?: string
   filters?: DashboardFilters
 }
 

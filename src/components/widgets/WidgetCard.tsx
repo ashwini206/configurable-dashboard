@@ -46,7 +46,7 @@ function LoadingState() {
 function EmptyState() {
   return (
     <div className="flex min-h-44 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50">
-      <span className="text-sm font-semibold text-slate-500">No healthcare data available</span>
+      <span className="text-sm font-semibold text-slate-500">No data for current filters.</span>
     </div>
   )
 }

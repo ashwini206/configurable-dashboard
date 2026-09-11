@@ -1,14 +1,69 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { Layout } from 'react-grid-layout'
 
+import DashboardFilterBar from '../components/layout/DashboardFilterBar'
+import HostileConfigLoader from '../components/widgets/HostileConfigLoader'
+import WidgetBoard from '../components/widgets/WidgetBoard'
 import DeveloperPanel from '../components/widgets/DeveloperPanel'
-import WidgetFactory from '../components/widgets/WidgetFactory'
 import { defaultDashboardConfig } from '../data/defaultDashboardConfig'
 import { loadDashboard } from '../services/fakeApi'
-import type { DashboardConfig, WidgetConfig } from '../types'
+import { validateDashboardConfig } from '../services/configValidator'
+import type { DashboardConfig, WidgetConfig, WidgetType } from '../types'
+import { useDashboardFilters } from '../context/DashboardFiltersContext'
+
+const STORAGE_KEY = 'dashboard-config-v1'
+
+function cloneDefaultConfig() {
+  return structuredClone(defaultDashboardConfig)
+}
+
+function loadPersistedConfig(): DashboardConfig {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (!saved) {
+      return cloneDefaultConfig()
+    }
+
+    return JSON.parse(saved) as DashboardConfig
+  } catch {
+    return cloneDefaultConfig()
+  }
+}
+
+function attachErrorsToWidgets(config: DashboardConfig): DashboardConfig {
+  const validation = validateDashboardConfig(config)
+  const issueMap = new Map<string, string[]>()
+  for (const issue of validation.issues) {
+    if (!issue.widgetId) {
+      continue
+    }
+
+    const existing = issueMap.get(issue.widgetId) ?? []
+    existing.push(issue.message)
+    issueMap.set(issue.widgetId, existing)
+  }
+
+  const widgets = config.widgets.map((widget) => {
+    const messages = issueMap.get(widget.id)
+    if (!messages?.length) {
+      return widget
+    }
+
+    return {
+      ...widget,
+      error: messages.join(' '),
+    }
+  })
+
+  return {
+    ...config,
+    widgets,
+  }
+}
 
 export default function DashboardPage() {
-  const [config, setConfig] = useState<DashboardConfig | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { filters } = useDashboardFilters()
+  const [config, setConfig] = useState<DashboardConfig | null>(loadPersistedConfig())
   const [error, setError] = useState<string | null>(null)
   const [slowMode, setSlowMode] = useState(false)
   const [forceFailure, setForceFailure] = useState(false)
@@ -17,40 +72,178 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false
 
-    const start = async () => {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const result = await loadDashboard(defaultDashboardConfig, {
-          slowMode,
-          forceFailure,
-          retryAttempts: 2,
-          randomFailureRate: 0.2,
-        })
-
+    loadDashboard(defaultDashboardConfig, {
+      slowMode,
+      forceFailure,
+      retryAttempts: 2,
+      randomFailureRate: 0.2,
+    })
+      .then((result) => {
         if (!cancelled) {
-          setConfig(result.data)
+          const next = attachErrorsToWidgets(result.data)
+          setConfig(next)
+          setError(null)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
         }
-      } catch (failure) {
+      })
+      .catch((failure) => {
         if (!cancelled) {
           setError(failure instanceof Error ? failure.message : 'Unknown dashboard loading error')
         }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    start()
+      })
 
     return () => {
       cancelled = true
     }
   }, [reloadCount, slowMode, forceFailure])
 
+  const noDataForCurrentFilters = useMemo(() => {
+    const validDepartmentRegion = {
+      North: ['Emergency', 'Cardiology'],
+      South: ['ICU', 'Radiology'],
+      East: ['Pharmacy'],
+    }
+
+    const region = filters.region ?? 'all'
+    const department = filters.department ?? 'all'
+    const dateRange = filters.dateRange ?? 'all'
+
+    if (region !== 'all' && department !== 'all' && !validDepartmentRegion[region as keyof typeof validDepartmentRegion]?.includes(department)) {
+      return true
+    }
+
+    if (dateRange !== 'all' && dateRange === '30d' && department === 'Cardiology') {
+      return false
+    }
+
+    return false
+  }, [filters])
+
   const widgets = config?.widgets ?? []
+
+  const loadHostileConfig = (incoming: DashboardConfig) => {
+    const normalized = attachErrorsToWidgets(incoming)
+    const validation = validateDashboardConfig(incoming)
+
+    if (!validation.valid) {
+      setError('Loaded hostile configuration has validation issues; widget error cards explain the failures.')
+    } else {
+      setError(null)
+    }
+
+    setConfig(normalized)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+  }
+
+  const addWidget = (type: WidgetType) => {
+    if (!config || type === 'unsupported') {
+      return
+    }
+
+    const widgetMap: Record<Exclude<WidgetType, 'unsupported'>, WidgetConfig> = {
+      kpi: {
+        id: `kpi-${crypto.randomUUID()}`,
+        type: 'kpi',
+        title: 'Care Operations KPIs',
+        subtitle: 'Healthcare summary',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 2,
+        dataSource: 'kpi',
+      },
+      bar: {
+        id: `bar-${crypto.randomUUID()}`,
+        type: 'bar',
+        title: 'Emergency Intake by Department',
+        subtitle: 'Department flow',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 2,
+        dataSource: 'bar',
+      },
+      line: {
+        id: `line-${crypto.randomUUID()}`,
+        type: 'line',
+        title: 'Average Wait Time Trend',
+        subtitle: 'Line chart',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 2,
+        dataSource: 'line',
+      },
+      table: {
+        id: `table-${crypto.randomUUID()}`,
+        type: 'table',
+        title: 'Ward Capacity Monitor',
+        subtitle: 'Ward table',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 2,
+        dataSource: 'table',
+      },
+    }
+
+    const templateWidget = widgetMap[type]
+    const nextConfig = {
+      ...config,
+      widgets: [...config.widgets, templateWidget],
+    }
+
+    const normalized = attachErrorsToWidgets(nextConfig)
+    setConfig(normalized)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+  }
+
+  const removeWidget = (id: string) => {
+    if (!config) {
+      return
+    }
+
+    const nextConfig = {
+      ...config,
+      widgets: config.widgets.filter((widget) => widget.id !== id),
+    }
+
+    const normalized = attachErrorsToWidgets(nextConfig)
+    setConfig(normalized)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+  }
+
+  const persistLayout = (layout: Layout) => {
+    if (!config) {
+      return
+    }
+
+    const mapped = layout.map((entry) => {
+      const source = config.widgets.find((widget) => widget.id === entry.i)
+      return {
+        ...(source ?? {
+          id: entry.i,
+          type: 'unsupported' as const,
+          title: 'Unknown Widget',
+          x: entry.x,
+          y: entry.y,
+          w: entry.w,
+          h: entry.h,
+          dataSource: 'unknown',
+        }),
+        id: entry.i,
+        x: entry.x,
+        y: entry.y,
+        w: entry.w,
+        h: entry.h,
+      }
+    })
+
+    const nextConfig = { ...config, widgets: mapped as WidgetConfig[] }
+    const normalized = attachErrorsToWidgets(nextConfig)
+    setConfig(normalized)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+  }
 
   return (
     <section className="space-y-5">
@@ -67,6 +260,9 @@ export default function DashboardPage() {
           Refresh Data
         </button>
       </section>
+
+      <DashboardFilterBar />
+      <HostileConfigLoader onLoad={loadHostileConfig} />
 
       <DeveloperPanel
         config={defaultDashboardConfig}
@@ -88,19 +284,33 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {widgets.map((widget: WidgetConfig) => (
-          <div key={widget.id}>
-            {loading ? (
+      {noDataForCurrentFilters ? (
+        <section className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+          <span className="text-sm font-black uppercase tracking-[0.2em] text-slate-500">
+            No data for current filters.
+          </span>
+        </section>
+      ) : null}
+
+      {config ? (
+        <WidgetBoard
+          config={config}
+          widgets={config.widgets}
+          onRemove={removeWidget}
+          onAdd={addWidget}
+          onLayoutChange={persistLayout}
+        />
+      ) : (
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {(widgets as WidgetConfig[]).map((widget: WidgetConfig) => (
+            <div key={widget.id}>
               <div className="rounded-xl border border-dashed border-slate-200 p-10 text-center text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                 Loading...
               </div>
-            ) : (
-              <WidgetFactory widget={widget} />
-            )}
-          </div>
-        ))}
-      </section>
+            </div>
+          ))}
+        </section>
+      )}
     </section>
   )
 }
