@@ -1,4 +1,4 @@
-import type { WidgetConfig } from '../types/widget'
+import type { WidgetConfig } from '../types'
 
 export interface KpiMetric {
   label: string

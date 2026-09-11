@@ -1,6 +1,6 @@
 import type { PropsWithChildren, ReactNode } from 'react'
 
-import type { WidgetConfig } from '../../types/widget'
+import type { WidgetConfig } from '../../types'
 
 interface WidgetCardProps extends PropsWithChildren {
   widget: WidgetConfig

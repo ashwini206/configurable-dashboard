@@ -1,5 +1,5 @@
 import type { HealthLineDatum } from '../../data/mockHealthcareData'
-import type { WidgetConfig } from '../../types/widget'
+import type { WidgetConfig } from '../../types'
 import WidgetCard from './WidgetCard'
 
 interface LineChartWidgetProps {
