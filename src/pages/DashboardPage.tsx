@@ -275,24 +275,24 @@ export default function DashboardPage() {
   }
 
   return (
-    <section className="space-y-5">
-      <section className="flex flex-wrap items-center justify-between gap-4 px-1">
+    <section className="dashboard-page-shell">
+      <section className="dashboard-title-strip">
         <div>
-          <span className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">
+          <span className="dashboard-section-label">
             Dashboard
           </span>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-900">
+          <h1 className="dashboard-page-title">
             Executive Dashboard
           </h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-700 transition hover:bg-slate-50">
+        <div className="dashboard-action-strip">
+          <button className="dashboard-refresh-button">
             Refresh Data
           </button>
-          <button className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-emerald-700 transition hover:bg-emerald-100" onClick={handleExport}>
+          <button className="dashboard-export-button" onClick={handleExport}>
             Export JSON
           </button>
-          <button className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-[0.1em] text-sky-700 transition hover:bg-sky-100" onClick={() => fileInputRef.current?.click()}>
+          <button className="dashboard-import-button" onClick={() => fileInputRef.current?.click()}>
             Import JSON
           </button>
           <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImport} />
@@ -300,8 +300,8 @@ export default function DashboardPage() {
       </section>
 
       {remoteNotice ? (
-        <section className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
-          <span className="text-xs font-black uppercase tracking-[0.2em] text-sky-700">{remoteNotice}</span>
+        <section className="remote-update-banner">
+          <span className="remote-update-text">{remoteNotice}</span>
         </section>
       ) : null}
 

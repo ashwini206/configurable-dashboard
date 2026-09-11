@@ -35,7 +35,7 @@ export default function TableWidget({ widget, rows }: TableWidgetProps) {
                 <td className="py-3 text-sm font-semibold text-slate-600">{row.occupancy}%</td>
                 <td className="py-3 text-sm font-semibold text-slate-600">{row.wait} min</td>
                 <td className="py-3">
-                  <span className="rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-white bg-slate-700">
+                  <span className="rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white bg-slate-700">
                     {row.alertLevel}
                   </span>
                 </td>
